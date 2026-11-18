@@ -1,6 +1,10 @@
 # =====================================================================
 # Home IoT CI/CD : GitHub Actions → GHCR → (매니페스트 갱신) → Argo CD
 #
+# ※ 참고용 — 실제 CI 는 Jenkins(Jenkinsfile, 가이드 7절)가 한다.
+#   Jenkins 와 겹치지 않도록 지금은 수동 실행(workflow_dispatch)만 켜 두었다.
+#   GitHub Actions 로 바꾸려면 아래 on: 의 주석을 풀고 Jenkins 를 멈춘다 (가이드 10-3절).
+#
 #  PR (→ main)   : 단위 테스트 · 매니페스트 렌더링 확인 · 이미지 빌드 · Trivy 검사 (push 없음)
 #  push (main)   : 위 + GHCR push (sha-xxxxxxx, latest)
 #                  + deploy/k8s/overlays/gitops 의 이미지 태그를 sha-xxxxxxx 로 바꿔 커밋
@@ -9,14 +13,14 @@
 name: ci-cd
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-    paths-ignore:
-      - "deploy/k8s/overlays/gitops/**"   # 이 워크플로가 커밋하는 태그 변경으로 다시 돌지 않게
-      - "docs/**"
-      - "**/*.md"
+  # pull_request:
+  #   branches: [main]
+  # push:
+  #   branches: [main]
+  #   paths-ignore:
+  #     - "deploy/k8s/overlays/gitops/**"   # 이 워크플로가 커밋하는 태그 변경으로 다시 돌지 않게
+  #     - "docs/**"
+  #     - "**/*.md"
   workflow_dispatch:
 
 permissions:

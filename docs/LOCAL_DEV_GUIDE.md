@@ -1,7 +1,7 @@
 # Home IoT 로컬 개발 환경 · 배포 가이드
 
 t1-base에서 개발하고, 로컬 클러스터(t1-loc-cp · t1-loc-w1 · t1-loc-w2)에 배포해서 테스트하는 절차입니다.
-클러스터 배포는 GitOps로만 합니다. main 브랜치에 merge하면 GitHub Actions가 이미지를 빌드해 GHCR에 올리고, Argo CD가 매니페스트 변경을 보고 자동으로 배포합니다 (7절). GitHub Actions 대신 Jenkins로 빌드하는 방법은 10절에 있습니다.
+클러스터 배포는 GitOps로만 합니다. main 브랜치에 merge하면 t1-base의 Jenkins가 이미지를 빌드해 GHCR에 올리고, Argo CD가 매니페스트 변경을 보고 자동으로 배포합니다 (7절). 같은 CI를 GitHub Actions로 하는 방법은 참고용으로 10절에 있습니다.
 
 > 기준 문서: Home IoT 아키텍처 · API 명세서 v0.1 · DB 명세서 v0.1 · 와이어프레임 v0.1 · 기술 스택(Nginx 추가) · kubeadm 클러스터 구축 가이드(2026-11-04)
 
@@ -103,7 +103,7 @@ t1-base는 10.10.31.20, 나머지는 kubeadm 구축 가이드의 1팀 주소 규
 | --- | --- | --- | --- |
 | t1-base IP | VM 네트워크 설정 `/etc/netplan/*.yaml` | `addresses: [10.10.31.20/24]` 를 새 IP로 → `sudo netplan apply` | `hostname -I` 로 확인 |
 | t1-base IP | `.env` 의 `DEV_HOSTS` | `DEV_HOSTS=<새 IP>,t1-base` | `make web-dev` 다시 실행, `make urls` 로 주소 확인 |
-| t1-base IP (Jenkins 를 쓰는 경우, 10절) | `ci/jenkins/.env` 의 `JENKINS_URL` | `JENKINS_URL=http://<새 IP>:8090/` | `make jenkins-up` 다시 실행 |
+| t1-base IP (Jenkins, 7-3절) | `ci/jenkins/.env` 의 `JENKINS_URL` | `JENKINS_URL=http://<새 IP>:8090/` | `make jenkins-up` 다시 실행 |
 | t1-base IP가 10.10.31.0/24 밖으로 | t1-loc-db `pg_hba.conf` (`scripts/setup-t1-loc-db.sh` 의 `ALLOW_CIDR`) | `ALLOW_CIDR=<새 대역> DB_PASSWORD=… bash setup-t1-loc-db.sh` (6-1절) | t1-base에서 `psql -h 10.10.31.10 …` 접속 확인 |
 | t1-base 이름 | 호스트 이름 | `sudo hostnamectl set-hostname <새 이름>` → `/etc/hosts` 의 `127.0.1.1 t1-base` 줄도 새 이름으로 | 다시 접속하면 프롬프트에 새 이름 |
 | t1-base 이름 | `.env` 의 `DEV_HOSTS` | `DEV_HOSTS=10.10.31.20,<새 이름>` | `make web-dev` 다시 실행 |
@@ -198,7 +198,7 @@ git log --oneline -3                     # 내 커밋 + merge 커밋 + Initial c
 브라우저에서 `https://github.com/sooyeong-lee/home-iot` 를 열어 파일이 올라갔는지 확인합니다.
 
 > - 원격 저장소가 완전히 비어 있으면(커밋 없음) `git fetch`/`git merge` 없이 바로 `git push -u origin main` 합니다.
-> - main 에 push 하면 GitHub Actions(`ci-cd`)가 바로 실행됩니다. 7-2절 ②(Workflow permissions: Read and write)를 먼저 해 두지 않았다면 마지막 `배포 매니페스트 갱신` 단계가 403 으로 실패합니다. 설정 후 `gh run rerun --failed` 로 다시 실행하면 됩니다. Jenkins 를 쓸 거라면 push 전에 10-5절대로 Actions 를 꺼 두세요.
+> - 이 push 로는 아직 빌드가 돌지 않습니다. 7절에서 Jenkins 를 띄우고 파이프라인을 등록하면 그때 main 을 빌드합니다. (저장소의 GitHub Actions 워크플로는 수동 실행만 되게 꺼져 있음 — 10절)
 > - 이후의 수정은 9-5절(브랜치 → PR → merge) 방식으로 올립니다.
 
 ### 2-4. 프로젝트 준비
@@ -328,41 +328,49 @@ psql -h 10.10.31.10 -U homeiot -d homeiot -c '\dt dev.*'
 
 ---
 
-## 7. 로컬 클러스터 배포 — GitHub Actions + Argo CD (GitOps)
+## 7. 로컬 클러스터 배포 — Jenkins + Argo CD (GitOps)
+
+CI 는 t1-base 의 **Jenkins** 가, 배포는 **Argo CD** 가 합니다. main 에 merge 하면 Jenkins 가 이미지를 빌드해 GHCR 에 올리고 매니페스트의 이미지 태그를 바꿔 커밋하며, Argo CD 가 그 변경을 보고 클러스터에 배포합니다.
+같은 일을 GitHub Actions 로 하는 방법은 10절(참고)에 있습니다.
 
 ### 7-1. 전체 흐름
 
 ```
-개발자 ──PR──▶ GitHub (sooyeong-lee/home-iot)
-                 │ PR       : 테스트 · 이미지 빌드 · Trivy 검사 (push 안 함)
-                 │ merge    : main 에 들어오면
-                 ▼
-          GitHub Actions (.github/workflows/ci-cd.yml)
-            1) test            단위 테스트 · JS 문법 · kustomize 렌더링
-            2) build (7개)     docker build → Trivy(CRITICAL 이면 실패) → GHCR push
-                               ghcr.io/sooyeong-lee/home-iot/<서비스>:sha-xxxxxxx, :latest
-            3) update-manifest deploy/k8s/overlays/gitops/kustomization.yaml 의
-                               newTag 를 sha-xxxxxxx 로 바꿔 main 에 커밋
-                 │
-                 ▼
+개발자 ──PR / merge──▶ GitHub (sooyeong-lee/home-iot)
+                           ▲ 2분마다 브랜치·PR 확인 (polling)
+                           │
+          Jenkins (t1-base, 컨테이너, :8090)   ← Jenkinsfile (저장소 루트)
+            1) 준비      태그 sha-xxxxxxx, 태그 갱신 커밋이면 건너뜀
+            2) 테스트    npm test · JS 문법 · kustomize 렌더링
+            3) 빌드      t1-base docker 로 이미지 7개 빌드 → Trivy(CRITICAL 이면 실패)
+            4) push      (main 만) GHCR 에 :sha-xxxxxxx, :latest
+            5) 매니페스트 (main 만) overlays/gitops 태그 변경 → main 에 커밋 · push
+                           │
+                           ▼
           Argo CD (로컬 클러스터 argocd 네임스페이스)
             main 의 deploy/k8s/overlays/gitops 를 감시 (기본 3분 주기)
             → 바뀐 태그로 homeiot 네임스페이스에 자동 동기화 (prune · selfHeal)
-                 │
-                 ▼
+                           │
+                           ▼
           t1-loc-w1 / w2 가 GHCR 에서 이미지를 받아 롤링 업데이트
 ```
 
 | 파일 | 역할 |
 | --- | --- |
-| `.github/workflows/ci-cd.yml` | CI/CD 파이프라인 |
+| `Jenkinsfile` | CI 파이프라인 (저장소 루트) |
+| `ci/jenkins/Dockerfile` | Jenkins LTS + docker CLI · Node.js 22 · kubectl · 플러그인 |
+| `ci/jenkins/plugins.txt` | 플러그인 목록 (Pipeline, Git, GitHub Branch Source, JCasC 등) |
+| `ci/jenkins/casc.yaml` | 관리자 계정 · `github-token` 자격증명 자동 설정 (Configuration as Code) |
+| `ci/jenkins/docker-compose.yml` | Jenkins 실행 (8090 포트, t1-base docker.sock 연결) |
+| `ci/jenkins/.env.example` | 관리자 비밀번호 · GitHub PAT (복사해서 `.env` 로, git 에 안 올라감) |
+| `scripts/jenkins-up.sh` | Jenkins 빌드 · 실행 · 상태 확인 (`make jenkins-up`) |
 | `deploy/k8s/overlays/gitops/` | Argo CD가 읽는 매니페스트 (GHCR 이미지, DB IP 고정, pull Secret 연결) |
 | `deploy/argocd/application.yaml` | Argo CD Application (`home-iot`) |
 | `scripts/argocd-install.sh` | Argo CD 설치 + LoadBalancer 노출 |
 | `scripts/ghcr-pull-secret.sh` | GHCR 비공개 이미지 pull Secret |
 | `scripts/argocd-repo-secret.sh` | 비공개 저장소일 때 Argo CD 저장소 자격증명 |
 
-> CI 를 GitHub Actions 대신 Jenkins 로 하려면 10절을 봅니다. Argo CD 부분은 같습니다.
+> 저장소에는 GitHub Actions 워크플로(`.github/workflows/ci-cd.yml`)도 참고용으로 들어 있습니다. Jenkins 와 겹치지 않도록 **수동 실행만** 되게 꺼 두었으므로 push 해도 실행되지 않습니다 (10절).
 
 ### 7-2. 사전 준비 (처음 한 번)
 
@@ -374,43 +382,74 @@ psql -h 10.10.31.10 -U homeiot -d homeiot -c '\dt dev.*'
 ssh lab@10.10.31.12 'curl -sI https://ghcr.io | head -1'     # HTTP/2 405 등 응답이 오면 됨
 ```
 
-**② GitHub 저장소 설정** — `https://github.com/sooyeong-lee/home-iot` → **Settings**
+**② GitHub 토큰(PAT) 만들기** — GitHub 오른쪽 위 프로필 → **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token**
 
-| 메뉴 | 설정 | 이유 |
+| 권한(scope) | 쓰는 곳 | 필요한 경우 |
 | --- | --- | --- |
-| Actions → General → Workflow permissions | **Read and write permissions** 선택 → Save | update-manifest 잡이 main 에 태그 커밋 |
-| Branches (branch protection 을 쓰는 경우) | `github-actions[bot]` 이 main 에 push 할 수 있게 허용 (또는 보호 규칙의 bypass 목록에 추가) | 막혀 있으면 update-manifest 가 `protected branch` 오류 |
+| `repo` | Jenkins: 저장소 체크아웃, 태그 커밋을 main 에 push / Argo CD: 저장소 읽기 | 항상 (Argo CD 는 저장소가 비공개일 때만) |
+| `write:packages` (`read:packages` 포함) | Jenkins: GHCR 에 이미지 push | 항상 |
+| `read:packages` | 클러스터: GHCR 에서 이미지 받기 | GHCR 패키지가 비공개일 때 (기본값) |
 
-**③ GitHub 토큰(PAT) 만들기** — GitHub 오른쪽 위 프로필 → **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token**
+토큰 하나에 `repo`, `write:packages` 를 모두 주면 위 세 곳에 같이 쓸 수 있습니다. 브랜치 보호 규칙을 쓰면 이 PAT 의 계정이 main 에 push 할 수 있어야 합니다.
 
-| 용도 | 권한(scope) | 필요한 경우 |
-| --- | --- | --- |
-| 클러스터가 GHCR 이미지 받기 | `read:packages` | GHCR 패키지가 비공개일 때 (기본값) |
-| Argo CD가 저장소 읽기 | `repo` | 저장소가 비공개일 때 |
+> 토큰은 화면에 한 번만 보입니다. 채팅·저장소에 붙이지 말고 `ci/jenkins/.env` 와 아래 명령의 환경 변수로만 넘깁니다.
+> GHCR 패키지를 공개로 바꾸면 클러스터 pull 토큰이 필요 없습니다: 첫 빌드 후 GitHub 프로필 → **Packages** → 각 패키지 → **Package settings → Change visibility → Public**.
 
-> 토큰은 화면에 한 번만 보입니다. 채팅·저장소에 붙이지 말고 아래 명령에 환경 변수로만 넘깁니다.
-> GHCR 패키지를 공개로 바꾸면 pull 토큰이 필요 없습니다: 첫 빌드 후 GitHub 프로필 → **Packages** → 각 패키지 → **Package settings → Change visibility → Public**.
+**③ t1-base 여유 자원** — Jenkins + 이미지 빌드에 메모리 2GB, 디스크 20GB 정도 여유가 필요합니다. 오래된 이미지는 파이프라인이 끝날 때 정리합니다(72시간 지난 것).
 
-### 7-3. 첫 빌드 확인
+**④ 방화벽** — `sudo ufw status` 가 active면 `sudo ufw allow 8090/tcp`
 
-2-3절에서 소스를 main 에 push 하면 첫 실행이 시작됩니다. (그 뒤로는 PR 을 만들 때마다 검사, merge 할 때마다 배포)
+### 7-3. Jenkins 실행 (t1-base)
 
-1. 저장소 **Actions** 탭 → `ci-cd` 실행에서 `테스트`, `이미지 …` 7개, `배포 매니페스트 갱신` 이 모두 초록색인지 확인
-2. 이후 PR 에서는 push 없이 빌드·검사만, main 에 merge 하면 GHCR push 와 매니페스트 갱신까지 진행
+```bash
+cd ~/home-iot
+cp ci/jenkins/.env.example ci/jenkins/.env
+vi ci/jenkins/.env
+#   JENKINS_ADMIN_PASSWORD=<관리자 비밀번호>
+#   JENKINS_URL=http://10.10.31.20:8090/
+#   GITHUB_USER=sooyeong-lee
+#   GITHUB_TOKEN=<7-2 의 PAT>
+make jenkins-up
+#   docker 연결 확인: 서버 2x.x.x
+#   Jenkins: http://10.10.31.20:8090/
+```
+
+브라우저에서 `http://10.10.31.20:8090` → `.env` 의 관리자 계정으로 로그인. 설치 마법사 없이 바로 시작합니다.
+**Jenkins 관리 → Credentials** 에 `github-token` 이 있는지 확인합니다.
+
+> PAT 나 비밀번호를 바꾸면 `ci/jenkins/.env` 수정 후 `make jenkins-up` 을 다시 실행합니다 (JCasC 가 다시 적용됨).
+
+### 7-4. 파이프라인 등록 (Multibranch Pipeline, 처음 한 번)
+
+1. Jenkins 첫 화면 → **새로운 Item**
+2. 이름 `home-iot` → **Multibranch Pipeline** 선택 → OK
+3. **Branch Sources → Add source → GitHub**
+   - Credentials: `github-token`
+   - Repository HTTPS URL: `https://github.com/sooyeong-lee/home-iot.git` → **Validate** 눌러 `Credentials ok` 확인
+   - Behaviours: 기본값 유지 (Discover branches, Discover pull requests from origin)
+4. **Build Configuration**: Mode `by Jenkinsfile`, Script Path `Jenkinsfile`
+5. **Scan Multibranch Pipeline Triggers**: `Periodically if not otherwise run` 체크 → Interval `2 minutes`
+6. **Orphaned Item Strategy**: Discard old items, Max # of old items to keep `10`
+7. **Save** → 바로 저장소 검사가 시작되고 `main`, 기능 브랜치, `PR-n` 이 각각 잡으로 생깁니다
+
+### 7-5. 첫 빌드 확인
+
+2-3절에서 소스를 main 에 올려 두었으므로, 7-4 에서 저장 직후 저장소 검사가 끝나면 `home-iot » main` 빌드가 바로 시작됩니다.
+
+1. Jenkins `home-iot » main` → 단계가 `준비 → 테스트 → 이미지 빌드 · Trivy → GHCR push → 배포 매니페스트 갱신` 까지 모두 초록색인지 확인 (처음은 이미지 빌드로 10분 이상 걸릴 수 있음)
+2. 저장소에 `chore(deploy): 이미지 sha-xxxxxxx 배포` 커밋이 생김 → 2분 뒤 검사에서 Jenkins 가 이 커밋으로 main 을 다시 빌드하지만 **준비 단계에서 건너뜀** (빌드 설명: `매니페스트 갱신 커밋 → 건너뜀`)
 3. 확인
 
 ```bash
-gh run list --limit 5                        # ci-cd 가 completed / success
-gh run watch                                 # 진행 중인 실행 지켜보기
-git pull && git log --oneline -3             # "chore(deploy): 이미지 sha-xxxxxxx 배포" 커밋이 생김
+git pull && git log --oneline -3             # "chore(deploy): 이미지 sha-xxxxxxx 배포" 커밋
 grep newTag deploy/k8s/overlays/gitops/kustomization.yaml
 ```
 
 GHCR 확인: GitHub 프로필 → **Packages** 에 `home-iot/auth-service` 등 7개.
 
-> 처음 main 에 올라간 커밋에서 Trivy가 CRITICAL 취약점을 찾으면 build 가 실패합니다. 로그의 표에서 패키지를 확인하고 베이스 이미지를 올리거나(예: `node:22-alpine` 최신 태그로 다시 빌드) 의존성 버전을 올립니다.
+> 처음 빌드에서 Trivy가 CRITICAL 취약점을 찾으면 빌드가 실패합니다. 콘솔 출력의 표에서 패키지를 확인하고 베이스 이미지를 올리거나(예: `node:22-alpine` 최신 태그로 다시 빌드) 의존성 버전을 올립니다.
 
-### 7-4. Argo CD 설치 (t1-base에서)
+### 7-6. Argo CD 설치 (t1-base에서)
 
 구축 가이드 9단계까지 끝난 클러스터(MetalLB · Envoy Gateway 설치됨)를 기준으로 합니다.
 
@@ -433,7 +472,7 @@ make argocd-install
 GITHUB_USER=sooyeong-lee GITHUB_TOKEN=<repo 권한 PAT> bash scripts/argocd-repo-secret.sh
 ```
 
-### 7-5. 배포 Secret 준비 (git 에 넣지 않는 값)
+### 7-7. 배포 Secret 준비 (git 에 넣지 않는 값)
 
 ```bash
 GHCR_USER=sooyeong-lee GHCR_TOKEN=<read:packages PAT> make gitops-secrets
@@ -450,7 +489,7 @@ kubectl -n homeiot get secret                # homeiot-secrets, homeiot-jwt, ghc
 
 DB IP가 10.10.31.10이 아니면 `deploy/k8s/overlays/gitops/postgres-external.yaml` 을 고쳐서 main 에 커밋합니다.
 
-### 7-6. Application 등록 → 자동 배포 시작
+### 7-8. Application 등록 → 자동 배포 시작
 
 ```bash
 make argocd-app                              # deploy/argocd/application.yaml 적용
@@ -482,23 +521,30 @@ kubectl -n homeiot run nettest --rm -i --image=busybox:1.37 --restart=Never -- \
 
 `make smoke` 의 "위조 x-user-id 헤더만으로 401", "Refresh 토큰으로 API 호출 401" 항목이 Gateway 검증을 확인합니다.
 
-### 7-7. 평소 개발 흐름
+### 7-9. 평소 개발 흐름
 
 ```bash
 git switch main && git pull
 git switch -c feature/<작업>
 # … 수정 · make dev / make up 으로 로컬 확인 · make smoke …
 git add -A && git commit -m "feat: …" && git push -u origin feature/<작업>
-gh pr create --base main                    # Checks 통과 확인 → 리뷰 → Merge
+gh pr create --base main
 ```
 
-merge 후 약 5~10분 안에 (Actions 빌드 + Argo CD 감지 주기 3분) 클러스터에 반영됩니다. 바로 반영하려면 Argo CD 화면에서 **REFRESH → SYNC**, 또는:
+1. 2분 안에 Jenkins `home-iot » PR-n` 잡이 실행 → 테스트 · 빌드 · Trivy 까지 초록색인지 확인 (PR 에서는 push 단계를 건너뜀)
+2. 리뷰 후 **Merge pull request** → `home-iot » main` 이 GHCR push 와 매니페스트 갱신까지 진행
+3. Argo CD 가 새 태그로 동기화: `make argocd-status`
+
+merge 후 약 5~15분 안에 (Jenkins 확인 주기 2분 + 빌드 + Argo CD 감지 주기 3분) 클러스터에 반영됩니다. 바로 반영하려면:
+
+- Jenkins: `home-iot` → **Scan Multibranch Pipeline Now** (또는 `main` 잡 → **지금 빌드**)
+- Argo CD: 화면에서 **REFRESH → SYNC**, 또는
 
 ```bash
 kubectl -n argocd annotate application home-iot argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-### 7-8. 되돌리기 (롤백)
+### 7-10. 되돌리기 (롤백)
 
 git 이 기준이므로 태그 변경 커밋을 되돌리면 됩니다.
 
@@ -511,20 +557,26 @@ git push origin main                                                    # → Ar
 
 > Argo CD 화면의 **HISTORY AND ROLLBACK** 도 쓸 수 있지만 자동 동기화가 켜져 있으면 곧 git 상태로 돌아갑니다. 롤백은 git revert 로 하세요.
 
-### 7-9. 막혔을 때 (파이프라인 · Argo CD)
+### 7-11. 막혔을 때 (Jenkins · Argo CD)
 
 | 증상 | 확인 | 해결 |
 | --- | --- | --- |
-| Actions `update-manifest` 가 `403` / `Permission to … denied` | Settings → Actions → Workflow permissions | **Read and write permissions** |
-| `update-manifest` 가 `protected branch hook declined` | 브랜치 보호 규칙 | bot 을 bypass 목록에 추가하거나 규칙 조정 |
-| build 가 Trivy 단계에서 실패 | 로그의 CRITICAL 표 | 베이스 이미지·의존성 버전 올림 |
+| `make jenkins-up` 이 `change-me 값이 남아 있습니다` | `ci/jenkins/.env` | 비밀번호 · PAT 입력 |
+| `docker: permission denied … docker.sock` | `docker exec homeiot-jenkins id` 에 docker GID 가 있는지 | `make jenkins-up` 다시 실행 (DOCKER_GID 자동 계산) |
+| Validate 가 `Credentials ok` 가 아님 / 저장소 검사 401 | Credentials 의 `github-token` | PAT 만료 · `repo` 권한 확인 → `.env` 수정 후 `make jenkins-up` |
+| PR 잡이 생기지 않음 | Multibranch 설정의 Behaviours | `Discover pull requests from origin` 추가, **Scan Multibranch Pipeline Now** |
+| GHCR push `denied: permission_denied` | PAT 권한 | `write:packages` 추가 |
+| 매니페스트 push `protected branch` / `403` | 브랜치 보호 규칙, PAT `repo` 권한 | PAT 계정이 main 에 push 가능하게 |
+| Trivy 단계 실패 | 콘솔 출력의 CRITICAL 표 | 베이스 이미지 · 의존성 버전 올림 |
+| `chore(deploy)` 커밋이 계속 생김 | 같은 sha 로 반복되는지 | 준비 단계 로그의 `skip=` 값 확인, 커밋 메시지가 `chore(deploy):` 로 시작하는지 |
+| 빌드가 느리거나 디스크 부족 | `docker system df` | `docker builder prune -f`, `docker image prune -a --filter until=72h` |
 | 파드 `ImagePullBackOff`, `401 Unauthorized` / `denied` | `kubectl -n homeiot describe pod …` | `ghcr-pull` Secret 토큰 권한(`read:packages`) 확인 → `make gitops-secrets`, 또는 패키지 Public |
 | 파드 `ImagePullBackOff`, `i/o timeout` | 노드에서 `curl -sI https://ghcr.io` | 노드의 인터넷·DNS 확인 |
 | Argo CD `ComparisonError` / `repository not found` | Settings → Repositories | 비공개 저장소 → `scripts/argocd-repo-secret.sh` |
 | Argo CD `Unknown` / `kustomize build failed` | 화면의 오류 메시지 | 로컬에서 `kubectl kustomize deploy/k8s/overlays/gitops` 로 같은 오류 재현 후 수정 |
 | `OutOfSync` 가 계속 | **APP DIFF** | 클러스터에서 손으로 바꾼 값 → selfHeal 이 되돌림. 원하는 값은 git 에 커밋 |
-| 파드 `CreateContainerConfigError` (`secret "homeiot-secrets" not found`) | `kubectl -n homeiot get secret` | 7-5 다시 실행 |
-| 새 커밋을 merge 했는데 그대로 | `make argocd-status` 의 sha, Actions 실행 결과 | Actions 성공·태그 커밋 확인 → Argo CD **REFRESH** |
+| 파드 `CreateContainerConfigError` (`secret "homeiot-secrets" not found`) | `kubectl -n homeiot get secret` | 7-7 다시 실행 |
+| 새 커밋을 merge 했는데 그대로 | `make argocd-status` 의 sha, Jenkins `main` 빌드 결과 | Jenkins 빌드 성공 · 태그 커밋 확인 → Argo CD **REFRESH** |
 
 ---
 
@@ -534,7 +586,7 @@ git push origin main                                                    # → Ar
 | --- | --- | --- |
 | `make dev` 에서 `[dev-gateway] JWT_PUBLIC_KEY_FILE` 오류 · `[auth-service] JWT_PRIVATE_KEY ... 필요` | `ls secrets/` | `make setup` 또는 `bash scripts/gen-jwt-keys.sh` |
 | 서비스 포트(3001~3004)로 직접 호출하면 401 | 요청 주소 | 정상. Gateway(로컬 :8080, 클러스터 Gateway 주소)를 통해 호출 |
-| 로그인은 되는데 다른 API 가 모두 401 (클러스터) | `kubectl -n homeiot get securitypolicy api-jwt` | 없으면 `make gitops-secrets` (7-5). 있으면 `kubectl -n homeiot describe securitypolicy api-jwt` 의 Conditions 확인 |
+| 로그인은 되는데 다른 API 가 모두 401 (클러스터) | `kubectl -n homeiot get securitypolicy api-jwt` | 없으면 `make gitops-secrets` (7-7). 있으면 `kubectl -n homeiot describe securitypolicy api-jwt` 의 Conditions 확인 |
 | 로그인 직후 API 가 `Jwt verification fails` 401 (클러스터) | 키를 다시 만들었는지 | 정책의 공개키와 auth-service 개인키가 다름 → `make gitops-secrets` → `kubectl -n homeiot rollout restart deploy/auth-service` 후 다시 로그인 |
 | Envoy 로그에 `upstream connect error` / 503 | `kubectl -n envoy-gateway-system get pods` 위치 | NetworkPolicy 는 Envoy 파드가 `envoy-gateway-system` 에 있다고 가정. 다른 곳이면 `deploy/k8s/base/networkpolicy.yaml` 의 namespaceSelector 수정 |
 | 서비스 로그에 `ECONNREFUSED 127.0.0.1:5432` | `docker compose ps` | `make infra` |
@@ -684,12 +736,12 @@ git switch main && git pull                 # 로컬 main 최신화
 | `scripts/setup-t1-base.sh` | t1-base | - | 개발 도구 설치 + kubeconfig 복사 | 2-2 |
 | `scripts/gen-jwt-keys.sh` | t1-base | `make setup`, `make keys` | JWT 서명키·공개키·Envoy JWT 정책 생성 | 2-4 |
 | `scripts/setup-t1-loc-db.sh` | t1-loc-db | - | PostgreSQL 설치 · 외부 접속 허용 · 계정/DB 생성 | 6-1 |
-| `scripts/k8s-secrets.sh` | t1-base | `make gitops-secrets` | DB·MQTT 계정, JWT 키를 쿠버네티스 Secret 으로 등록 | 7-5 |
-| `scripts/ghcr-pull-secret.sh` | t1-base | `make gitops-secrets` | GHCR 비공개 이미지를 받기 위한 pull Secret 등록 | 7-5 |
-| `scripts/argocd-install.sh` | t1-base | `make argocd-install` | Argo CD 설치 + 화면을 LoadBalancer 로 노출 | 7-4 |
-| `scripts/argocd-repo-secret.sh` | t1-base | - | 비공개 저장소를 Argo CD 에 등록 | 7-4 |
-| `scripts/smoke-test.sh` | t1-base | `make smoke` | 회원가입부터 엘리베이터 도착까지 API 흐름 자동 확인 | 4, 7-6 |
-| `scripts/jenkins-up.sh` | t1-base | `make jenkins-up`, `make jenkins-down` | Jenkins 컨테이너 빌드 · 실행 · docker 연결 확인 | 10-3 |
+| `scripts/k8s-secrets.sh` | t1-base | `make gitops-secrets` | DB·MQTT 계정, JWT 키를 쿠버네티스 Secret 으로 등록 | 7-7 |
+| `scripts/ghcr-pull-secret.sh` | t1-base | `make gitops-secrets` | GHCR 비공개 이미지를 받기 위한 pull Secret 등록 | 7-7 |
+| `scripts/argocd-install.sh` | t1-base | `make argocd-install` | Argo CD 설치 + 화면을 LoadBalancer 로 노출 | 7-6 |
+| `scripts/argocd-repo-secret.sh` | t1-base | - | 비공개 저장소를 Argo CD 에 등록 | 7-6 |
+| `scripts/smoke-test.sh` | t1-base | `make smoke` | 회원가입부터 엘리베이터 도착까지 API 흐름 자동 확인 | 4, 7-8 |
+| `scripts/jenkins-up.sh` | t1-base | `make jenkins-up`, `make jenkins-down` | Jenkins 컨테이너 빌드 · 실행 · docker 연결 확인 | 7-3 |
 | `mosquitto/entrypoint.sh` | 컨테이너 안 (자동) | - | MQTT 계정 파일을 만들고 mosquitto 실행 | - |
 | `scripts/dev-all.js` (.js) | t1-base | `make dev` | 백엔드 5개 + dev-gateway 를 한 터미널에서 watch 모드로 실행 | 3 |
 | `tools/dev-gateway/index.js` (.js) | t1-base / 컨테이너 | `make dev`, `make up` | 로컬 개발용 Gateway: 경로 라우팅 + JWT 검증 + `x-user-*` 헤더 | 0-1, 3, 4 |
@@ -773,7 +825,7 @@ git switch main && git pull                 # 로컬 main 최신화
 6. 엘리베이터 3층 호출 202 → 바로 다시 호출 409 → arrived 까지 대기 (최대 20초)
 7. 테스트로 만든 기기 삭제 (가입한 테스트 계정 `smoke-<시각>@example.com` 은 남음)
 
-**jenkins-up.sh — Jenkins 실행 (CI 를 Jenkins 로 할 때)**
+**jenkins-up.sh — Jenkins 실행 (CI)**
 
 - 실행: `make jenkins-up` / 중지: `make jenkins-down` (데이터 볼륨 `jenkins_home` 은 남음)
 - 하는 일
@@ -821,8 +873,8 @@ home-iot/
 │  └─ k8s/base, k8s/overlays/gitops (Argo CD 가 배포)
 ├─ scripts/                (9-6절) setup-t1-base, setup-t1-loc-db, gen-jwt-keys, k8s-secrets, ghcr-pull-secret,
 │                          argocd-install, argocd-repo-secret, smoke-test, dev-all.js
-├─ .github/workflows/ci-cd.yml   테스트 · 빌드 · Trivy · GHCR push · 매니페스트 갱신
-├─ Jenkinsfile             같은 파이프라인의 Jenkins 버전 (10절)
+├─ .github/workflows/ci-cd.yml   같은 CI 의 GitHub Actions 버전 (참고용, 수동 실행만 — 10절)
+├─ Jenkinsfile             CI 파이프라인 (Jenkins, 7절)
 ├─ ci/jenkins/             Jenkins 이미지 · 플러그인 · JCasC · compose
 ├─ docker-compose.yml
 ├─ Makefile                make help
@@ -831,136 +883,117 @@ home-iot/
 
 ---
 
-## 10. GitHub Actions 대신 Jenkins로 CI 하기
+## 10. (참고) GitHub Actions 로 CI 하기
 
-7절의 CI(GitHub Actions)를 Jenkins로 바꾸는 방법입니다. **Argo CD로 배포하는 부분(7-4 ~ 7-8)은 그대로** 쓰고, 이미지 빌드·GHCR push·태그 커밋만 Jenkins가 합니다.
+7절의 Jenkins 대신 GitHub Actions 로 같은 CI 를 돌리는 방법입니다. **Argo CD 로 배포하는 부분(7-6 ~ 7-10)은 그대로** 쓰고, 이미지 빌드 · GHCR push · 태그 커밋만 GitHub Actions 가 합니다.
+워크플로 파일 `.github/workflows/ci-cd.yml` 은 저장소에 들어 있지만, Jenkins 와 겹치지 않도록 **지금은 수동 실행(`workflow_dispatch`)만** 켜져 있습니다.
 
-### 10-1. 구조
+### 10-1. 구조와 Jenkins 비교
 
 ```
-개발자 ──PR / merge──▶ GitHub (sooyeong-lee/home-iot)
-                           ▲ 2분마다 브랜치·PR 확인 (polling)
-                           │
-          Jenkins (t1-base, 컨테이너, :8090)   ← Jenkinsfile (저장소 루트)
-            1) 준비      태그 sha-xxxxxxx, 태그 갱신 커밋이면 건너뜀
-            2) 테스트    npm test · JS 문법 · kustomize 렌더링
-            3) 빌드      t1-base docker 로 이미지 7개 빌드 → Trivy(CRITICAL 이면 실패)
-            4) push      (main 만) GHCR 에 :sha-xxxxxxx, :latest
-            5) 매니페스트 (main 만) overlays/gitops 태그 변경 → main 에 커밋 · push
-                           │
-                           ▼
-          Argo CD (7절과 동일) → 로컬 클러스터 자동 배포
+개발자 ──PR──▶ GitHub (sooyeong-lee/home-iot)
+                 │ PR       : 테스트 · 이미지 빌드 · Trivy 검사 (push 안 함)
+                 │ merge    : main 에 들어오면
+                 ▼
+          GitHub Actions (.github/workflows/ci-cd.yml)
+            1) test            단위 테스트 · JS 문법 · kustomize 렌더링
+            2) build (7개)     docker build → Trivy(CRITICAL 이면 실패) → GHCR push
+                               ghcr.io/sooyeong-lee/home-iot/<서비스>:sha-xxxxxxx, :latest
+            3) update-manifest deploy/k8s/overlays/gitops/kustomization.yaml 의
+                               newTag 를 sha-xxxxxxx 로 바꿔 main 에 커밋
+                 │
+                 ▼
+          Argo CD (로컬 클러스터 argocd 네임스페이스)
+            main 의 deploy/k8s/overlays/gitops 를 감시 (기본 3분 주기)
+            → 바뀐 태그로 homeiot 네임스페이스에 자동 동기화 (prune · selfHeal)
+                 │
+                 ▼
+          t1-loc-w1 / w2 가 GHCR 에서 이미지를 받아 롤링 업데이트
 ```
 
-| 항목 | GitHub Actions (7절) | Jenkins (10절) |
+| 항목 | Jenkins (7절, 사용 중) | GitHub Actions (10절, 참고) |
 | --- | --- | --- |
-| 파이프라인 정의 | `.github/workflows/ci-cd.yml` | `Jenkinsfile` |
-| 실행 위치 | GitHub 서버 | t1-base 의 Jenkins 컨테이너 (빌드는 t1-base docker) |
-| 변경 감지 | push · PR 즉시 | 2분마다 GitHub 확인 (t1-base는 사설 IP라 GitHub webhook 을 받을 수 없음) |
-| GitHub 인증 | 자동 `GITHUB_TOKEN` | PAT 를 Jenkins 자격증명 `github-token` 으로 등록 |
-| 결과 확인 | 저장소 Actions 탭, PR Checks | Jenkins 화면 (`http://10.10.31.20:8090`) |
+| 파이프라인 정의 | `Jenkinsfile` | `.github/workflows/ci-cd.yml` |
+| 실행 위치 | t1-base 의 Jenkins 컨테이너 (빌드는 t1-base docker) | GitHub 서버 |
+| 변경 감지 | 2분마다 GitHub 확인 (t1-base는 사설 IP라 GitHub webhook 을 받을 수 없음) | push · PR 즉시 |
+| GitHub 인증 | PAT 를 Jenkins 자격증명 `github-token` 으로 등록 | 자동 `GITHUB_TOKEN` |
+| 결과 확인 | Jenkins 화면 (`http://10.10.31.20:8090`) | 저장소 Actions 탭, PR Checks |
+| 단계 | 테스트 → 빌드 · Trivy → GHCR push → 매니페스트 갱신 | 같음 |
 | Argo CD · GHCR · 매니페스트 | 같음 | 같음 |
-
-추가된 파일:
-
-| 파일 | 역할 |
-| --- | --- |
-| `Jenkinsfile` | 파이프라인 (Actions 워크플로와 같은 단계) |
-| `ci/jenkins/Dockerfile` | Jenkins LTS + docker CLI · Node.js 22 · kubectl · 플러그인 |
-| `ci/jenkins/plugins.txt` | 플러그인 목록 (Pipeline, Git, GitHub Branch Source, JCasC 등) |
-| `ci/jenkins/casc.yaml` | 관리자 계정 · `github-token` 자격증명 자동 설정 (Configuration as Code) |
-| `ci/jenkins/docker-compose.yml` | Jenkins 실행 (8090 포트, t1-base docker.sock 연결) |
-| `ci/jenkins/.env.example` | 관리자 비밀번호 · GitHub PAT (복사해서 `.env` 로, git 에 안 올라감) |
-| `scripts/jenkins-up.sh` | Jenkins 빌드 · 실행 · 상태 확인 (`make jenkins-up`) |
 
 ### 10-2. 사전 준비
 
-**① GitHub PAT** — 7-2절 ③과 같은 화면에서 Tokens (classic) 생성
+**GitHub 저장소 설정** — `https://github.com/sooyeong-lee/home-iot` → **Settings**
 
-| 권한(scope) | 쓰는 곳 |
-| --- | --- |
-| `repo` | 저장소 체크아웃, 태그 커밋을 main 에 push |
-| `write:packages` (`read:packages` 포함) | GHCR 에 이미지 push |
+| 메뉴 | 설정 | 이유 |
+| --- | --- | --- |
+| Actions → General → Workflow permissions | **Read and write permissions** 선택 → Save | update-manifest 잡이 main 에 태그 커밋 |
+| Branches (branch protection 을 쓰는 경우) | `github-actions[bot]` 이 main 에 push 할 수 있게 허용 (또는 보호 규칙의 bypass 목록에 추가) | 막혀 있으면 update-manifest 가 `protected branch` 오류 |
 
-브랜치 보호 규칙을 쓰면 이 PAT 의 계정이 main 에 push 할 수 있어야 합니다.
+GHCR push 와 태그 커밋은 워크플로가 자동 토큰(`GITHUB_TOKEN`)으로 하므로 PAT 가 필요 없습니다. 클러스터의 GHCR pull 토큰(`read:packages`)과 Argo CD 저장소 토큰은 7-2 와 같습니다.
 
-**② t1-base 여유 자원** — Jenkins + 이미지 빌드에 메모리 2GB, 디스크 20GB 정도 여유가 필요합니다. 오래된 이미지는 파이프라인이 끝날 때 정리합니다(72시간 지난 것).
+### 10-3. GitHub Actions 로 바꾸기
 
-**③ 방화벽** — `sudo ufw status` 가 active면 `sudo ufw allow 8090/tcp`
+① 워크플로의 자동 실행 켜기 — `.github/workflows/ci-cd.yml` 맨 위 `on:` 부분에서 주석(`#`)을 풀어 아래처럼 만듭니다.
 
-### 10-3. Jenkins 실행 (t1-base)
-
-```bash
-cd ~/home-iot
-cp ci/jenkins/.env.example ci/jenkins/.env
-vi ci/jenkins/.env
-#   JENKINS_ADMIN_PASSWORD=<관리자 비밀번호>
-#   JENKINS_URL=http://10.10.31.20:8090/
-#   GITHUB_USER=sooyeong-lee
-#   GITHUB_TOKEN=<10-2 의 PAT>
-make jenkins-up
-#   docker 연결 확인: 서버 2x.x.x
-#   Jenkins: http://10.10.31.20:8090/
+```yaml
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths-ignore:
+      - "deploy/k8s/overlays/gitops/**"
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
 ```
 
-브라우저에서 `http://10.10.31.20:8090` → `.env` 의 관리자 계정으로 로그인. 설치 마법사 없이 바로 시작합니다.
-**Jenkins 관리 → Credentials** 에 `github-token` 이 있는지 확인합니다.
-
-> PAT 나 비밀번호를 바꾸면 `ci/jenkins/.env` 수정 후 `make jenkins-up` 을 다시 실행합니다 (JCasC 가 다시 적용됨).
-
-### 10-4. 파이프라인 등록 (Multibranch Pipeline, 처음 한 번)
-
-1. Jenkins 첫 화면 → **새로운 Item**
-2. 이름 `home-iot` → **Multibranch Pipeline** 선택 → OK
-3. **Branch Sources → Add source → GitHub**
-   - Credentials: `github-token`
-   - Repository HTTPS URL: `https://github.com/sooyeong-lee/home-iot.git` → **Validate** 눌러 `Credentials ok` 확인
-   - Behaviours: 기본값 유지 (Discover branches, Discover pull requests from origin)
-4. **Build Configuration**: Mode `by Jenkinsfile`, Script Path `Jenkinsfile`
-5. **Scan Multibranch Pipeline Triggers**: `Periodically if not otherwise run` 체크 → Interval `2 minutes`
-6. **Orphaned Item Strategy**: Discard old items, Max # of old items to keep `10`
-7. **Save** → 바로 저장소 검사가 시작되고 `main`, 기능 브랜치, `PR-n` 이 각각 잡으로 생깁니다
-
-### 10-5. GitHub Actions 끄기 (둘 중 하나만)
-
-둘 다 켜 두면 같은 커밋을 두 번 빌드하고, 태그 커밋이 서로 충돌합니다.
+② Jenkins 멈추기 — 둘 다 켜 두면 같은 커밋을 두 번 빌드하고 태그 커밋이 서로 충돌합니다.
 
 ```bash
-gh workflow disable ci-cd          # 워크플로 비활성화 (파일은 남겨 둠)
-gh workflow list --all             # ci-cd  disabled_manually
+make jenkins-down                  # 또는 Jenkins 화면에서 home-iot 잡 → Disable
 ```
 
-웹: 저장소 → **Actions** → 왼쪽 `ci-cd` → 오른쪽 위 `…` → **Disable workflow**
+③ 변경을 PR 로 올려 merge (9-5절) → 이후 push · PR 마다 자동 실행
 
-### 10-6. 동작 확인
-
-1. 기능 브랜치를 push 하고 PR 생성 (9-5절)
-2. 2분 안에 Jenkins `home-iot » PR-n` 잡이 실행 → 테스트 · 빌드 · Trivy 까지 초록색 (push 단계는 건너뜀)
-3. PR merge → `home-iot » main` 실행 → GHCR push · 매니페스트 갱신까지 진행
-4. 저장소에 `chore(deploy): 이미지 sha-xxxxxxx 배포` 커밋이 생김 → 다음 검사 때 Jenkins 가 이 커밋을 빌드하지만 **준비 단계에서 건너뜀** (설명: `매니페스트 갱신 커밋 → 건너뜀`)
-5. Argo CD 가 새 태그로 동기화: `make argocd-status`
-
-바로 실행하려면 Jenkins 화면에서 `home-iot` → **Scan Multibranch Pipeline Now**, 또는 `main` 잡 → **지금 빌드**.
-
-Argo CD 설치·Secret·Application 등록은 7-4 ~ 7-6절과 같습니다. 이미 7절로 배포 중이라면 Jenkins 로 바꿔도 Argo CD 쪽은 손댈 것이 없습니다.
-
-### 10-7. 다시 GitHub Actions 로 돌아가기
+한 번만 돌려 보고 싶을 때는 ①을 하지 않고 수동 실행만 해도 됩니다 (Jenkins 를 멈춘 상태에서):
 
 ```bash
-gh workflow enable ci-cd
-make jenkins-down                  # 또는 Jenkins 화면에서 home-iot 잡 Disable
+gh workflow run ci-cd --ref main
+gh run watch
 ```
 
-### 10-8. 막혔을 때 (Jenkins)
+### 10-4. 실행 확인
+
+1. 저장소 **Actions** 탭 → `ci-cd` 실행에서 `테스트`, `이미지 …` 7개, `배포 매니페스트 갱신` 이 모두 초록색인지 확인
+2. 이후 PR 에서는 push 없이 빌드·검사만, main 에 merge 하면 GHCR push 와 매니페스트 갱신까지 진행
+3. 확인
+
+```bash
+gh run list --limit 5                        # ci-cd 가 completed / success
+gh run watch                                 # 진행 중인 실행 지켜보기
+git pull && git log --oneline -3             # "chore(deploy): 이미지 sha-xxxxxxx 배포" 커밋이 생김
+grep newTag deploy/k8s/overlays/gitops/kustomization.yaml
+```
+
+GHCR 확인: GitHub 프로필 → **Packages** 에 `home-iot/auth-service` 등 7개.
+
+> 처음 main 에 올라간 커밋에서 Trivy가 CRITICAL 취약점을 찾으면 build 가 실패합니다. 로그의 표에서 패키지를 확인하고 베이스 이미지를 올리거나(예: `node:22-alpine` 최신 태그로 다시 빌드) 의존성 버전을 올립니다.
+
+### 10-5. 막혔을 때 (GitHub Actions)
 
 | 증상 | 확인 | 해결 |
 | --- | --- | --- |
-| `make jenkins-up` 이 `change-me 값이 남아 있습니다` | `ci/jenkins/.env` | 비밀번호 · PAT 입력 |
-| `docker: permission denied … docker.sock` | `docker exec homeiot-jenkins id` 에 docker GID 가 있는지 | `make jenkins-up` 다시 실행 (DOCKER_GID 자동 계산) |
-| Validate 가 `Credentials ok` 가 아님 / 저장소 검사 401 | Credentials 의 `github-token` | PAT 만료 · `repo` 권한 확인 → `.env` 수정 후 `make jenkins-up` |
-| PR 잡이 생기지 않음 | Multibranch 설정의 Behaviours | `Discover pull requests from origin` 추가, **Scan Multibranch Pipeline Now** |
-| GHCR push `denied: permission_denied` | PAT 권한 | `write:packages` 추가 |
-| 매니페스트 push `protected branch` / `403` | 브랜치 보호 규칙, PAT `repo` 권한 | PAT 계정이 main 에 push 가능하게 |
-| Trivy 단계 실패 | 콘솔 출력의 CRITICAL 표 | 베이스 이미지 · 의존성 버전 올림 (7-9절과 같음) |
-| `chore(deploy)` 커밋이 계속 생김 | 같은 sha 로 반복되는지 | 준비 단계 로그의 `skip=` 값 확인, 커밋 메시지가 `chore(deploy):` 로 시작하는지 |
-| 빌드가 느리거나 디스크 부족 | `docker system df` | `docker builder prune -f`, `docker image prune -a --filter until=72h` |
+| Actions `update-manifest` 가 `403` / `Permission to … denied` | Settings → Actions → Workflow permissions | **Read and write permissions** |
+| `update-manifest` 가 `protected branch hook declined` | 브랜치 보호 규칙 | bot 을 bypass 목록에 추가하거나 규칙 조정 |
+| 새 커밋을 merge 했는데 그대로 | `make argocd-status` 의 sha, Actions 실행 결과 | Actions 성공·태그 커밋 확인 → Argo CD **REFRESH** |
+| build 가 Trivy 단계에서 실패 | 로그의 CRITICAL 표 | 베이스 이미지 · 의존성 버전 올림 |
+| push 했는데 Actions 가 돌지 않음 | `ci-cd.yml` 의 `on:` | 10-3 ① 을 했는지 확인 (기본은 수동 실행만) |
+
+### 10-6. 다시 Jenkins 로 돌아가기
+
+```bash
+# ci-cd.yml 의 on: 을 다시 workflow_dispatch 만 남기고 PR 로 merge
+make jenkins-up                    # Jenkins 화면에서 home-iot 잡 Enable
+```

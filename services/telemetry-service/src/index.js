@@ -80,7 +80,8 @@ async function handleStatus(homeId, deviceId, msg) {
 async function handleCommand(homeId, deviceId, msg) {
   await pool.query(
     `INSERT INTO device_events (device_id, event_type, payload)
-     SELECT $1, 'COMMAND_SENT', $3 WHERE EXISTS (SELECT 1 FROM devices WHERE device_id = $1 AND user_id = $2)`,
+     SELECT $1::varchar, 'COMMAND_SENT', $3::jsonb
+     WHERE EXISTS (SELECT 1 FROM devices WHERE device_id = $1::varchar AND user_id = $2::bigint)`,
     [deviceId, homeId, { commandId: msg.commandId, command: msg.command, params: msg.params ?? {} }]);
 }
 

@@ -89,7 +89,7 @@ argocd-app: ## Argo CD Application 등록 (main 자동 배포 시작)
 argocd-status: ## Argo CD 동기화 상태
 	kubectl -n argocd get application home-iot -o jsonpath='{.status.sync.status}{" / "}{.status.health.status}{" / "}{.status.sync.revision}{"\n"}'
 
-# ---------- Jenkins (GitHub Actions 대신 쓸 때, 가이드 10절) ----------
+# ---------- Jenkins (CI, 가이드 7절) ----------
 jenkins-up: ## Jenkins 빌드·실행 (http://<t1-base>:8090)
 	bash scripts/jenkins-up.sh
 

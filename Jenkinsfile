@@ -1,6 +1,6 @@
 // =====================================================================
 // Home IoT CI/CD (Jenkins 버전) : Jenkins → GHCR → (매니페스트 갱신) → Argo CD
-//   .github/workflows/ci-cd.yml 과 같은 일을 한다. 둘 중 하나만 켜 둘 것 (가이드 10절)
+//   이 프로젝트의 CI (가이드 7절). .github/workflows/ci-cd.yml 은 같은 일을 하는 참고용(수동 실행만, 가이드 10절)
 //
 //  PR / 기능 브랜치 : 테스트 · 이미지 빌드 · Trivy 검사 (push 없음)
 //  main            : 위 + GHCR push (sha-xxxxxxx, latest)

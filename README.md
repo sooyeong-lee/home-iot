@@ -28,6 +28,6 @@ make web-dev                                      # http://<t1-base>:3000
 
 전부 컨테이너로: `make up` → `http://<t1-base>:8080`, 확인: `make smoke`
 
-로컬 클러스터 배포: GitHub Actions → GHCR → Argo CD (main 에 merge 하면 자동 배포, 가이드 7절)
+로컬 클러스터 배포: Jenkins → GHCR → Argo CD (main 에 merge 하면 자동 배포, 가이드 7절). GitHub Actions 버전은 참고용(가이드 10절)
 
 자세한 절차는 **[docs/LOCAL_DEV_GUIDE.md](docs/LOCAL_DEV_GUIDE.md)**, 명령 목록은 `make help`.

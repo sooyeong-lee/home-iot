@@ -82,6 +82,7 @@ gitops-secrets: ## Argo CD 배포 전 Secret 준비 (DB·MQTT·JWT + GHCR pull, 
 	bash scripts/k8s-secrets.sh
 	bash scripts/ghcr-pull-secret.sh
 	kubectl apply -f secrets/security-policy.yaml
+	kubectl apply -f deploy/k8s/external/postgres-endpointslice.yaml
 
 argocd-app: ## Argo CD Application 등록 (main 자동 배포 시작)
 	kubectl apply -f deploy/argocd/application.yaml

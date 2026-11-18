@@ -9,7 +9,7 @@ metadata:
   name: home-iot
   namespace: argocd
   finalizers:
-    - resources-finalizer.argocd.argoproj.io   # Application 을 지우면 배포한 리소스도 같이 삭제
+    - resources-finalizer.argocd.argoproj.io/foreground   # Application 을 지우면 배포한 리소스도 같이 삭제
 spec:
   project: default
   source:

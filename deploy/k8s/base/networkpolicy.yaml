@@ -1,0 +1,85 @@
+# =====================================================================
+# NetworkPolicy — 서비스는 Gateway(Envoy) 와 내부 서비스에서 온 요청만 받는다
+#
+# JWT 검증을 Gateway 에서만 하므로, Gateway 를 건너뛰고 서비스에 직접 요청하는 길을 막아야 한다.
+# (막지 않으면 클러스터 안 다른 파드가 x-user-id 헤더를 마음대로 붙여 호출할 수 있음)
+#  - Envoy 프록시 파드는 envoy-gateway-system 네임스페이스에서 뜬다 (Envoy Gateway 기본 배포 방식)
+#  - kubelet 의 헬스체크(노드 → 파드)는 NetworkPolicy 와 상관없이 허용된다
+#  - 나중에 Prometheus 로 /metrics 를 수집하면 그 네임스페이스를 허용 규칙에 추가할 것
+# =====================================================================
+# 1) 기본: homeiot 네임스페이스의 모든 파드는 들어오는 연결 거부
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 2) Envoy Gateway → 외부에 열린 서비스
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-gateway
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [auth-service, device-service, control-service, telemetry-service, simulator, web-nginx]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+---
+# 3) control · telemetry → device-service (소유권 확인 REST 호출)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-device-from-services
+spec:
+  podSelector:
+    matchLabels: { app: device-service }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [control-service, telemetry-service]
+      ports:
+        - port: 3002
+---
+# 4) web-nginx → web(Next.js)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-from-nginx
+spec:
+  podSelector:
+    matchLabels: { app: web }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: web-nginx }
+      ports:
+        - port: 3000
+---
+# 5) 같은 네임스페이스 파드 → mosquitto (MQTT)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mqtt-from-namespace
+spec:
+  podSelector:
+    matchLabels: { app: mosquitto }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 1883

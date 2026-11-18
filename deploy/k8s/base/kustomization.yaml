@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: homeiot
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - mosquitto.yaml
+  - services.yaml
+  - web.yaml
+  - gateway.yaml
+  - gateway-security.yaml
+  - networkpolicy.yaml

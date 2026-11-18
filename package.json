@@ -1,0 +1,22 @@
+{
+  "name": "home-iot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Home IoT (가정 전자기기 IoT 연동 시스템) - MSA monorepo",
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:auth": "npm run dev -w services/auth-service",
+    "dev:device": "npm run dev -w services/device-service",
+    "dev:control": "npm run dev -w services/control-service",
+    "dev:telemetry": "npm run dev -w services/telemetry-service",
+    "dev:simulator": "npm run dev -w services/simulator",
+    "dev:services": "node scripts/dev-all.js",
+    "test": "node --test \"packages/common/test/*.test.js\""
+  }
+}

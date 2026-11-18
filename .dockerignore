@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+.git
+.env
+secrets
+deploy
+docs
+web
+*.md
+ci
+Jenkinsfile
+.github

@@ -1,0 +1,23 @@
+# =====================================================================
+# Jenkins (t1-base) — scripts/jenkins-up.sh 로 실행
+#   화면: http://<t1-base>:8090   (8080 은 앱 compose 게이트웨이가 사용)
+# =====================================================================
+name: homeiot-jenkins
+
+services:
+  jenkins:
+    build: .
+    image: homeiot/jenkins:local
+    container_name: homeiot-jenkins
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8090:8080"
+    group_add:
+      - "${DOCKER_GID:-999}"          # 호스트 docker 그룹 → 컨테이너에서 docker.sock 사용
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  jenkins_home:

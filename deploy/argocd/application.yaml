@@ -1,0 +1,30 @@
+# =====================================================================
+# Argo CD Application : home-iot (로컬 클러스터 dev)
+#   kubectl apply -f deploy/argocd/application.yaml
+# main 브랜치의 deploy/k8s/overlays/gitops 를 감시해서 homeiot 네임스페이스에 자동 동기화
+# =====================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: home-iot
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # Application 을 지우면 배포한 리소스도 같이 삭제
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sooyeong-lee/home-iot.git
+    targetRevision: main
+    path: deploy/k8s/overlays/gitops
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: homeiot
+  syncPolicy:
+    automated:
+      prune: true      # git 에서 지운 리소스는 클러스터에서도 삭제
+      selfHeal: true   # 클러스터에서 손으로 바꾼 값은 git 기준으로 되돌림
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

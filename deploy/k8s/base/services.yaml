@@ -1,0 +1,307 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  labels: { app: auth-service, part-of: homeiot }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: auth-service }
+  template:
+    metadata:
+      labels: { app: auth-service, part-of: homeiot }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3001"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: auth-service
+          image: homeiot/auth-service
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3001
+          envFrom:
+            - configMapRef: { name: homeiot-config }
+            - secretRef: { name: homeiot-secrets }
+          env:
+            - name: PORT
+              value: "3001"
+            - name: JWT_PRIVATE_KEY_FILE
+              value: /etc/homeiot/jwt/jwt-private.pem
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: jwt
+              mountPath: /etc/homeiot/jwt
+              readOnly: true
+      volumes:
+        - name: jwt
+          secret:
+            secretName: homeiot-jwt
+            items:
+            - key: jwt-private.pem
+              path: jwt-private.pem
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  labels: { app: auth-service, part-of: homeiot }
+spec:
+  selector: { app: auth-service }
+  ports:
+    - name: http
+      port: 3001
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: device-service
+  labels: { app: device-service, part-of: homeiot }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: device-service }
+  template:
+    metadata:
+      labels: { app: device-service, part-of: homeiot }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3002"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: device-service
+          image: homeiot/device-service
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3002
+          envFrom:
+            - configMapRef: { name: homeiot-config }
+            - secretRef: { name: homeiot-secrets }
+          env:
+            - name: PORT
+              value: "3002"
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: device-service
+  labels: { app: device-service, part-of: homeiot }
+spec:
+  selector: { app: device-service }
+  ports:
+    - name: http
+      port: 3002
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-service
+  labels: { app: control-service, part-of: homeiot }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: control-service }
+  template:
+    metadata:
+      labels: { app: control-service, part-of: homeiot }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3003"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: control-service
+          image: homeiot/control-service
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3003
+          envFrom:
+            - configMapRef: { name: homeiot-config }
+            - secretRef: { name: homeiot-secrets }
+          env:
+            - name: PORT
+              value: "3003"
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-service
+  labels: { app: control-service, part-of: homeiot }
+spec:
+  selector: { app: control-service }
+  ports:
+    - name: http
+      port: 3003
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-service
+  labels: { app: telemetry-service, part-of: homeiot }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: telemetry-service }
+  template:
+    metadata:
+      labels: { app: telemetry-service, part-of: homeiot }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3004"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: telemetry-service
+          image: homeiot/telemetry-service
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3004
+          envFrom:
+            - configMapRef: { name: homeiot-config }
+            - secretRef: { name: homeiot-secrets }
+          env:
+            - name: PORT
+              value: "3004"
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetry-service
+  labels: { app: telemetry-service, part-of: homeiot }
+spec:
+  selector: { app: telemetry-service }
+  ports:
+    - name: http
+      port: 3004
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+  labels: { app: simulator, part-of: homeiot }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: simulator }
+  template:
+    metadata:
+      labels: { app: simulator, part-of: homeiot }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3005"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: simulator
+          image: homeiot/simulator
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3005
+          envFrom:
+            - configMapRef: { name: homeiot-config }
+            - secretRef: { name: homeiot-secrets }
+          env:
+            - name: PORT
+              value: "3005"
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: simulator
+  labels: { app: simulator, part-of: homeiot }
+spec:
+  selector: { app: simulator }
+  ports:
+    - name: http
+      port: 3005
+      targetPort: http

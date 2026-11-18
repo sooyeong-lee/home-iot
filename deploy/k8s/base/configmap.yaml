@@ -1,0 +1,20 @@
+# 비밀이 아닌 공통 설정. 비밀값(DB/MQTT 비밀번호, JWT 키)은 scripts/k8s-secrets.sh 로 Secret 생성
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homeiot-config
+data:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  DB_HOST: postgres            # overlay 의 외부 DB Service (t1-loc-db)
+  DB_PORT: "5432"
+  DB_NAME: homeiot
+  DB_SCHEMA: dev
+  MQTT_URL: mqtt://mosquitto:1883
+  JWT_ISSUER: homeiot-auth
+  JWT_AUDIENCE: homeiot
+  DEVICE_SERVICE_URL: http://device-service:3002
+  COMMAND_TIMEOUT_MS: "5000"
+  OFFLINE_AFTER_SEC: "20"
+  SIM_INTERVAL_SEC: "5"
+  SIM_FLOOR_MOVE_MS: "1500"

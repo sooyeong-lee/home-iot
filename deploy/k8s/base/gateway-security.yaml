@@ -1,0 +1,23 @@
+# =====================================================================
+# Gateway 보안 설정 (JWT 검증을 Gateway 에서만 하기 위한 장치)
+#
+# 서비스는 토큰을 검사하지 않고 Gateway 가 넣어 준 x-user-id / x-user-email 헤더만 믿는다.
+# 그래서 바깥 요청에 같은 이름의 헤더가 섞여 오면 안 된다.
+#  → 모든 요청에서 x-user-* 헤더를 가장 먼저(JWT 필터보다 앞) 지운다.
+#    이후 SecurityPolicy(api-jwt)가 토큰을 검증하고 claim 으로 헤더를 다시 채운다.
+# JWT 검증 정책(SecurityPolicy)은 공개키가 환경마다 달라서 secrets/security-policy.yaml 로 따로 적용한다.
+# =====================================================================
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: strip-user-headers
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: homeiot-gw
+  headers:
+    earlyRequestHeaders:
+      remove:
+        - x-user-id
+        - x-user-email

@@ -1,0 +1,128 @@
+# =====================================================================
+# Home IoT 로컬 개발용 compose (t1-base)
+#
+#  1) 인프라만:     docker compose up -d
+#       → postgres(5432), mosquitto(1883). 서비스는 호스트에서 npm run dev 로 실행
+#  2) 전체 실행:    docker compose --profile app up -d --build
+#       → 서비스 4종 + 시뮬레이터 + 웹 + 개발용 게이트웨이(dev-gateway, 8080)
+#       → http://<t1-base IP>:8080  (클러스터의 Envoy Gateway 역할: JWT 검증 + 경로 라우팅)
+# =====================================================================
+name: homeiot
+
+x-svc-env: &svc-env
+  NODE_ENV: development
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: ${DB_NAME:-homeiot}
+  DB_USER: ${DB_USER:-homeiot}
+  DB_PASSWORD: ${DB_PASSWORD:-homeiot-dev}
+  DB_SCHEMA: ${DB_SCHEMA:-dev}
+  MQTT_URL: mqtt://mosquitto:1883
+  MQTT_USERNAME: ${MQTT_USERNAME:-homeiot}
+  MQTT_PASSWORD: ${MQTT_PASSWORD:-homeiot-dev}
+  DEVICE_SERVICE_URL: http://device-service:3002
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+x-svc: &svc
+  build:
+    context: .
+    dockerfile: services/Dockerfile
+  profiles: ["app"]
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    mosquitto: { condition: service_started }
+
+services:
+  # ---------------- 인프라 ----------------
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-homeiot}
+      POSTGRES_USER: ${DB_USER:-homeiot}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-homeiot-dev}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    entrypoint: ["/bin/sh", "/mosquitto/entrypoint.sh"]
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:-homeiot}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-homeiot-dev}
+    ports: ["1883:1883"]
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/entrypoint.sh:/mosquitto/entrypoint.sh:ro
+      - mqttdata:/mosquitto/data
+
+  # ---------------- 애플리케이션 (profile: app) ----------------
+  auth-service:
+    <<: *svc
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: auth-service } }
+    environment:
+      <<: *svc-env
+      JWT_PRIVATE_KEY_FILE: /run/secrets/homeiot/jwt-private.pem
+    volumes:
+      - ./secrets:/run/secrets/homeiot:ro   # 토큰 발급(서명)용 개인키는 auth-service 만
+    ports: ["3001:3001"]
+
+  device-service:
+    <<: *svc
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: device-service } }
+    environment: *svc-env
+    ports: ["3002:3002"]
+
+  control-service:
+    <<: *svc
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: control-service } }
+    environment: *svc-env
+    ports: ["3003:3003"]
+
+  telemetry-service:
+    <<: *svc
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: telemetry-service } }
+    environment: *svc-env
+    ports: ["3004:3004"]
+
+  simulator:
+    <<: *svc
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: simulator } }
+    environment: *svc-env
+    depends_on:
+      mosquitto: { condition: service_started }
+    ports: ["3005:3005"]
+
+  web:
+    build: { context: ./web }
+    profiles: ["app"]
+    restart: unless-stopped
+    ports: ["3000:3000"]
+
+  # Envoy Gateway 대역: Access 토큰 검증은 여기서만 (서비스는 x-user-id 헤더만 읽음)
+  gateway:
+    build: { context: ./tools/dev-gateway }
+    profiles: ["app"]
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    environment:
+      JWT_PUBLIC_KEY_FILE: /run/secrets/homeiot/jwt-public.pem
+      AUTH_URL: http://auth-service:3001
+      DEVICE_URL: http://device-service:3002
+      CONTROL_URL: http://control-service:3003
+      TELEMETRY_URL: http://telemetry-service:3004
+      SIMULATOR_URL: http://simulator:3005
+      WEB_URL: http://web:3000
+    volumes:
+      - ./secrets:/run/secrets/homeiot:ro
+    depends_on: [auth-service, device-service, control-service, telemetry-service, simulator, web]
+
+volumes:
+  pgdata:
+  mqttdata:

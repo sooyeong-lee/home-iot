@@ -1,0 +1,10 @@
+{
+  "name": "homeiot-dev-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "로컬 개발용 API Gateway (Envoy Gateway 대역) — JWT 검증 + 경로 라우팅, 외부 패키지 없음",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

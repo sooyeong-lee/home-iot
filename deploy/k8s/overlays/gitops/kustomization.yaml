@@ -1,0 +1,36 @@
+# =====================================================================
+# Argo CD 가 감시하는 overlay (GitOps)
+#  - 이미지: GHCR (ghcr.io/<owner>/home-iot/<서비스>)
+#  - newTag 는 GitHub Actions(update-manifest 잡)가 main 빌드마다 sha-xxxxxxx 로 바꿔 커밋한다
+#    → 직접 고치지 말 것 (되돌리기는 이 파일의 이전 커밋으로 git revert)
+#  - Secret(homeiot-secrets, homeiot-jwt, ghcr-pull)은 git 에 없다 → scripts/k8s-secrets.sh, scripts/ghcr-pull-secret.sh
+# =====================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: homeiot
+resources:
+  - ../../base
+  - postgres-external.yaml
+  - serviceaccount.yaml
+images:
+  - name: homeiot/auth-service
+    newName: ghcr.io/sooyeong-lee/home-iot/auth-service
+    newTag: latest
+  - name: homeiot/device-service
+    newName: ghcr.io/sooyeong-lee/home-iot/device-service
+    newTag: latest
+  - name: homeiot/control-service
+    newName: ghcr.io/sooyeong-lee/home-iot/control-service
+    newTag: latest
+  - name: homeiot/telemetry-service
+    newName: ghcr.io/sooyeong-lee/home-iot/telemetry-service
+    newTag: latest
+  - name: homeiot/simulator
+    newName: ghcr.io/sooyeong-lee/home-iot/simulator
+    newTag: latest
+  - name: homeiot/web
+    newName: ghcr.io/sooyeong-lee/home-iot/web
+    newTag: latest
+  - name: homeiot/web-nginx
+    newName: ghcr.io/sooyeong-lee/home-iot/web-nginx
+    newTag: latest

@@ -1,0 +1,27 @@
+# 클러스터 밖 PostgreSQL(t1-loc-db)을 "postgres:5432" 로 부르기 위한 Service
+# Argo CD 는 치환 스크립트를 돌리지 않으므로 IP 를 직접 적는다 (t1-loc-db IP 가 다르면 여기 수정 후 커밋)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels: { app: postgres, part-of: homeiot }
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: postgres-external
+  labels:
+    kubernetes.io/service-name: postgres
+    part-of: homeiot
+addressType: IPv4
+ports:
+  - name: postgres
+    port: 5432
+    protocol: TCP
+endpoints:
+  - addresses: ["10.10.31.10"]

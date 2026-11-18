@@ -71,7 +71,7 @@ pipeline {
             def arg = img.service ? "--build-arg SERVICE=${img.service}" : ''
             stage("build ${img.name}") {
               sh """
-                docker build ${arg} -f ${img.file} \
+                docker build --pull ${arg} -f ${img.file} \
                   --label org.opencontainers.image.source=https://github.com/${env.REPO_PATH} \
                   --label org.opencontainers.image.revision=${env.GIT_COMMIT} \
                   -t ${ref}:${env.TAG} -t ${ref}:latest ${img.context}

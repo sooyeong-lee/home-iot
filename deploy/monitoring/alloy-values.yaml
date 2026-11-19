@@ -1,0 +1,42 @@
+# grafana/alloy 값 파일 (가이드 8-6)
+#   helm upgrade --install alloy grafana/alloy -n monitoring -f deploy/monitoring/alloy-values.yaml
+# loki svc 이름이 다르면 아래 url 과 kube-prometheus-stack-values.yaml 의 Loki url 을 같이 고친다.
+
+controller:
+  type: deployment                        # Kubernetes API 로 읽으므로 1개면 충분 (여러 개면 로그 중복)
+  replicas: 1
+
+alloy:
+  configMap:
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+        namespaces { names = ["homeiot"] }
+      }
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
+        }
+      }

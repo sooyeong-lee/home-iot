@@ -1,0 +1,25 @@
+# =====================================================================
+# NetworkPolicy — Prometheus(monitoring 네임스페이스)의 /metrics 수집 허용 (가이드 8-4)
+#
+# networkpolicy.yaml 의 default-deny-ingress 때문에 그대로 두면 Prometheus 가 수집하지 못한다.
+# monitoring 네임스페이스에서 서비스 포트로 오는 요청만 추가로 허용한다.
+# =====================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: homeiot
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - { protocol: TCP, port: 3001 }   # auth-service
+        - { protocol: TCP, port: 3002 }   # device-service
+        - { protocol: TCP, port: 3003 }   # control-service
+        - { protocol: TCP, port: 3004 }   # telemetry-service
+        - { protocol: TCP, port: 3005 }   # simulator

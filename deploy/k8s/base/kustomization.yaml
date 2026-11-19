@@ -10,3 +10,4 @@ resources:
   - gateway.yaml
   - gateway-security.yaml
   - networkpolicy.yaml
+  - networkpolicy-monitoring.yaml

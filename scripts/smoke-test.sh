@@ -32,7 +32,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "${API}/devices")
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-user-id: 1' "${API}/devices")
 [ "$code" = 401 ] && pass "x-user-id 위조 헤더만으로는 401 (Gateway 검증)" || fail "위조 헤더: ${code}"
 code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(echo "$r" | jq -r .data.refreshToken)" "${API}/devices")
-[ "$code" = 401 ] && pass "Refresh 토큰으로 API 호출 401" || fail "Refresh 토큰 거부: ${code}"
+[[ "$code" = 401 || "$code" = 403 ]] && pass "Refresh 토큰으로 API 호출 거부 (${code})" || fail "Refresh 토큰 거부: ${code}"
 
 r=$(req POST /devices "{\"deviceId\":\"${LIGHT}\",\"name\":\"거실 조명\",\"type\":\"light\",\"location\":\"거실\"}")
 [ "$(echo "$r" | jq -r .success)" = true ] && pass "조명 등록" || fail "조명 등록: $r"

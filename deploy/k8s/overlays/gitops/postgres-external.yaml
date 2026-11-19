@@ -10,18 +10,3 @@ spec:
     - name: postgres
       port: 5432
       targetPort: 5432
----
-apiVersion: discovery.k8s.io/v1
-kind: EndpointSlice
-metadata:
-  name: postgres-external
-  labels:
-    kubernetes.io/service-name: postgres
-    part-of: homeiot
-addressType: IPv4
-ports:
-  - name: postgres
-    port: 5432
-    protocol: TCP
-endpoints:
-  - addresses: ["10.10.31.10"]

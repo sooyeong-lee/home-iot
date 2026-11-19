@@ -1,0 +1,17 @@
+# 클러스터 밖 PostgreSQL(t1-loc-db) 연결용 EndpointSlice
+# Argo CD 는 EndpointSlice 를 기본 제외(resource.exclusions)하므로 make gitops-secrets 에서 kubectl 로 직접 적용
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: postgres-external
+  namespace: homeiot
+  labels:
+    kubernetes.io/service-name: postgres
+    part-of: homeiot
+addressType: IPv4
+ports:
+  - name: postgres
+    port: 5432
+    protocol: TCP
+endpoints:
+  - addresses: ["10.10.31.10"]

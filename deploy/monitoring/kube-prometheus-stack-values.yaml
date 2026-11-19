@@ -1,0 +1,64 @@
+# kube-prometheus-stack 값 파일 (가이드 8-5)
+#   helm upgrade --install kps prometheus-community/kube-prometheus-stack \
+#     -n monitoring -f deploy/monitoring/kube-prometheus-stack-values.yaml
+# 사전: kubectl -n monitoring create secret generic grafana-admin \
+#         --from-literal=admin-user=admin --from-literal=admin-password='<관리자 비밀번호>'
+
+# kubeadm 은 아래 구성 요소의 지표를 127.0.0.1 에만 열어서 항상 Down 으로 보임 → 수집 끔
+kubeEtcd: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+
+alertmanager:
+  enabled: false                          # 알림은 Grafana 에서 (구성도 기준)
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    podMonitorSelectorNilUsesHelmValues: false   # 8-8 의 Envoy PodMonitor 도 수집
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources: { requests: { storage: 10Gi } }
+    additionalScrapeConfigs:
+      - job_name: homeiot-pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces: { names: [homeiot] }
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            regex: (.+)
+            target_label: __metrics_path__
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+
+grafana:
+  admin:
+    existingSecret: grafana-admin         # 8-5 ① 에서 만듦 (비밀번호를 git 에 넣지 않음)
+    userKey: admin-user
+    passwordKey: admin-password
+  service:
+    type: LoadBalancer                    # MetalLB 주소 받음
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 2Gi                             # 화면에서 만든 대시보드 · 알림 보존
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki.monitoring.svc:3100

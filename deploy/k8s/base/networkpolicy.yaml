@@ -5,7 +5,7 @@
 # (막지 않으면 클러스터 안 다른 파드가 x-user-id 헤더를 마음대로 붙여 호출할 수 있음)
 #  - Envoy 프록시 파드는 envoy-gateway-system 네임스페이스에서 뜬다 (Envoy Gateway 기본 배포 방식)
 #  - kubelet 의 헬스체크(노드 → 파드)는 NetworkPolicy 와 상관없이 허용된다
-#  - 나중에 Prometheus 로 /metrics 를 수집하면 그 네임스페이스를 허용 규칙에 추가할 것
+#  - Prometheus(monitoring 네임스페이스)의 /metrics 수집 허용은 networkpolicy-monitoring.yaml (가이드 8-4)
 # =====================================================================
 # 1) 기본: homeiot 네임스페이스의 모든 파드는 들어오는 연결 거부
 apiVersion: networking.k8s.io/v1

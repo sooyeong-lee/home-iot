@@ -1,0 +1,40 @@
+# grafana-community/loki 값 파일 (가이드 8-6)
+#   helm upgrade --install loki grafana-community/loki -n monitoring -f deploy/monitoring/loki-values.yaml
+
+deploymentMode: Monolithic                # 파드 1개 (차트 12 이전 이름: SingleBinary)
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2026-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index: { prefix: loki_index_, period: 24h }
+  limits_config:
+    retention_period: 168h                # 7일
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 10Gi
+
+minio: { enabled: false }
+gateway: { enabled: false }               # Grafana · Alloy 가 loki:3100 으로 바로 접속
+backend: { replicas: 0 }
+read: { replicas: 0 }
+write: { replicas: 0 }
+chunksCache: { enabled: false }
+resultsCache: { enabled: false }
+lokiCanary: { enabled: false }
+test: { enabled: false }

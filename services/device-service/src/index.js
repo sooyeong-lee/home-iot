@@ -14,13 +14,12 @@ const {
   createService, createPool, requireUser, connectMqtt, express, envInt,
   Errors, ok, wrap, tx, topics, DEVICE_TYPES, initialState,
 } = require('@homeiot/common');
+const { nextDeviceIdFrom, validateDeviceInput } = require('./validate');
 
 const svc = createService('device-service');
 const { logger } = svc;
 const pool = createPool(logger);
 const mqtt = connectMqtt('device-service', logger);
-
-const DEVICE_ID_RE = /^[a-z0-9][a-z0-9-]{2,49}$/;
 
 const SELECT_DEVICE = `
   SELECT d.device_id, d.user_id, d.name, d.type, d.location, d.status, d.last_seen_at, d.created_at,
@@ -69,18 +68,10 @@ r.get('/devices', wrap(async (req, res) => {
   ok(res, rows.map(toDevice));
 }));
 
-/**
- * 기기 ID 자동 생성: <종류>-<사용자ID>-<순번 2자리>  예) light-5-01, light-5-02, aircon-5-01
- * 사용자·종류별로 지금 있는 가장 큰 순번 + 1 (삭제된 번호는 다시 쓰지 않도록 최댓값 기준)
- */
+/** 기기 ID 자동 생성 (규칙은 ./validate.js 의 nextDeviceIdFrom) */
 async function nextDeviceId(db, type, userId) {
-  const prefix = `${type}-${userId}-`;
-  const { rows } = await db.query('SELECT device_id FROM devices WHERE device_id LIKE $1', [`${prefix}%`]);
-  const max = rows.reduce((m, r) => {
-    const n = Number.parseInt(r.device_id.slice(prefix.length), 10);
-    return Number.isInteger(n) && n > m ? n : m;
-  }, 0);
-  return `${prefix}${String(max + 1).padStart(2, '0')}`;
+  const { rows } = await db.query('SELECT device_id FROM devices WHERE device_id LIKE $1', [`${type}-${userId}-%`]);
+  return nextDeviceIdFrom(type, userId, rows.map((r) => r.device_id));
 }
 
 /**
@@ -90,12 +81,7 @@ async function nextDeviceId(db, type, userId) {
  */
 r.post('/devices', wrap(async (req, res) => {
   const { deviceId: requestedId, name, type, location } = req.body ?? {};
-  const details = [];
-  const auto = requestedId === undefined || requestedId === null || requestedId === '';
-  if (!auto && (typeof requestedId !== 'string' || !DEVICE_ID_RE.test(requestedId))) details.push({ field: 'deviceId', message: '기기 ID는 소문자·숫자·하이픈 3~50자 (예: light-living-01)' });
-  if (typeof name !== 'string' || !name.trim() || name.length > 100) details.push({ field: 'name', message: '기기 이름을 입력하세요 (100자 이하).' });
-  if (!DEVICE_TYPES.includes(type)) details.push({ field: 'type', message: `기기 종류는 ${DEVICE_TYPES.join(', ')} 중 하나` });
-  if (location !== undefined && location !== null && (typeof location !== 'string' || location.length > 50)) details.push({ field: 'location', message: '설치 위치는 50자 이하' });
+  const { auto, details } = validateDeviceInput({ deviceId: requestedId, name, type, location }, DEVICE_TYPES);
   if (details.length) throw Errors.invalid('입력값을 확인하세요.', details);
 
   const init = initialState(type);

@@ -14,6 +14,7 @@ const {
   createService, createPool, requireUser, connectMqtt, callService, express, env, envInt,
   Errors, ok, wrap, tx, ALL_TOPICS, parseTopic, sharedTopic,
 } = require('@homeiot/common');
+const { parseEventsQuery } = require('./query');
 
 const svc = createService('telemetry-service');
 const { logger } = svc;
@@ -122,18 +123,14 @@ r.use(requireUser); // 사용자 식별: Gateway 가 넣어 준 x-user-id
 r.get('/devices/:deviceId/events', wrap(async (req, res) => {
   // 소유권 확인은 device-service 에 맡긴다 (404/403 그대로 전달)
   const device = await callService(DEVICE_SERVICE_URL, `/api/v1/devices/${encodeURIComponent(req.params.deviceId)}`, { user: req.user });
-  const { from, to, type } = req.query;
-  const limit = Math.min(Number.parseInt(req.query.limit ?? '50', 10) || 50, 500);
-  const fromD = from ? new Date(from) : null;
-  const toD = to ? new Date(to) : null;
-  if ((fromD && Number.isNaN(fromD.getTime())) || (toD && Number.isNaN(toD.getTime()))) throw Errors.invalid('from/to 는 ISO 8601 형식이어야 합니다.');
-  if (type && !['STATE_CHANGED', 'COMMAND_SENT', 'ONLINE', 'OFFLINE'].includes(type)) throw Errors.invalid('type 값이 올바르지 않습니다.');
+  const { fromD, toD, type, limit, error } = parseEventsQuery(req.query);
+  if (error) throw Errors.invalid(error);
   const { rows } = await pool.query(
     `SELECT event_id, event_type, payload, occurred_at FROM device_events
      WHERE device_id = $1 AND ($2::timestamptz IS NULL OR occurred_at >= $2)
        AND ($3::timestamptz IS NULL OR occurred_at <= $3) AND ($4::text IS NULL OR event_type = $4)
      ORDER BY occurred_at DESC LIMIT $5`,
-    [device.deviceId, fromD, toD, type ?? null, limit]);
+    [device.deviceId, fromD, toD, type, limit]);
   ok(res, rows.map((e) => ({ eventId: Number(e.event_id), type: e.event_type, payload: e.payload, occurredAt: e.occurred_at })));
 }));
 

@@ -17,6 +17,6 @@
     "dev:telemetry": "npm run dev -w services/telemetry-service",
     "dev:simulator": "npm run dev -w services/simulator",
     "dev:services": "node scripts/dev-all.js",
-    "test": "node --test \"packages/common/test/*.test.js\""
+    "test": "node --test \"packages/common/test/*.test.js\" \"services/*/test/*.test.js\""
   }
 }

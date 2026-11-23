@@ -12,6 +12,7 @@ const {
   createService, connectMqtt, express, envInt,
   Errors, ok, wrap, topics, ALL_TOPICS, parseTopic, initialState, applyCommand, TYPE_LABELS,
 } = require('@homeiot/common');
+const { nextFloor } = require('./elevator');
 
 const svc = createService('simulator');
 const { logger, app } = svc;
@@ -121,9 +122,7 @@ async function onElevatorCall(t, msg) {
     if (!d.call) return;
     const cur = d.state.currentFloor;
     if (cur === d.call.floor) { arrive(d).catch(() => {}); return; }
-    let next = cur + (d.call.floor > cur ? 1 : -1);
-    if (next === 0) next += d.call.floor > cur ? 1 : -1; // 0층은 없음
-    d.state = { ...d.state, currentFloor: next };
+    d.state = { ...d.state, currentFloor: nextFloor(cur, d.call.floor) }; // 0층은 건너뜀
     publishState(d).catch(() => {});
   }, FLOOR_MOVE_MS);
 }
@@ -149,7 +148,7 @@ setInterval(() => {
 
 // ---------------- 화면 + 화면용 API ----------------
 const r = express.Router();
-r.use(express.static(path.join(__dirname, '..', 'public')));
+r.use(express.static(path.join(__dirname, 'public')));
 
 r.get('/api/devices', (req, res) => ok(res, { mqttConnected: mqtt.isConnected(), devices: [...devices.values()].map(view), log: eventLog.slice(0, 100) }));
 

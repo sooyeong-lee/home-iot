@@ -861,8 +861,12 @@ git switch main && git pull                 # 로컬 main 최신화
 home-iot/
 ├─ packages/common/        공통 모듈 (config, logger, errors, devices, topics, db, auth, mqtt, service)
 ├─ services/
-│  ├─ Dockerfile           백엔드 공용 (--build-arg SERVICE=…)
 │  ├─ auth-service/  device-service/  control-service/  telemetry-service/  simulator/
+│  │   각 서비스 폴더 구조 (모두 같음)
+│  │     src/         소스 (simulator 는 화면 파일 src/public/ 포함)
+│  │     test/        단위 테스트 (npm test 로 함께 실행)
+│  │     Dockerfile   서비스 이미지 (빌드 컨텍스트: 저장소 루트)
+│  │     README.md    서비스 설명 · 실행 방법 · 담당
 ├─ web/                    Next.js (App Router) + Dockerfile
 ├─ nginx/                  web.conf(클러스터 web-nginx), Dockerfile
 ├─ tools/dev-gateway/      로컬 개발용 Gateway (JWT 검증 + 라우팅, make dev · make up)

@@ -60,13 +60,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: auth-service,      context: .,     file: services/Dockerfile, service: auth-service }
-          - { name: device-service,    context: .,     file: services/Dockerfile, service: device-service }
-          - { name: control-service,   context: .,     file: services/Dockerfile, service: control-service }
-          - { name: telemetry-service, context: .,     file: services/Dockerfile, service: telemetry-service }
-          - { name: simulator,         context: .,     file: services/Dockerfile, service: simulator }
-          - { name: web,               context: web,   file: web/Dockerfile,      service: "" }
-          - { name: web-nginx,         context: nginx, file: nginx/Dockerfile,    service: "" }
+          - { name: auth-service,      context: .,     file: services/auth-service/Dockerfile }
+          - { name: device-service,    context: .,     file: services/device-service/Dockerfile }
+          - { name: control-service,   context: .,     file: services/control-service/Dockerfile }
+          - { name: telemetry-service, context: .,     file: services/telemetry-service/Dockerfile }
+          - { name: simulator,         context: .,     file: services/simulator/Dockerfile }
+          - { name: web,               context: web,   file: web/Dockerfile }
+          - { name: web-nginx,         context: nginx, file: nginx/Dockerfile }
     steps:
       - uses: actions/checkout@v4
 
@@ -92,7 +92,6 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          build-args: ${{ matrix.service && format('SERVICE={0}', matrix.service) || '' }}
           load: true
           tags: |
             ${{ steps.img.outputs.name }}:${{ steps.img.outputs.tag }}

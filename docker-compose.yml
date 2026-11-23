@@ -24,9 +24,6 @@ x-svc-env: &svc-env
   LOG_LEVEL: ${LOG_LEVEL:-info}
 
 x-svc: &svc
-  build:
-    context: .
-    dockerfile: services/Dockerfile
   profiles: ["app"]
   restart: unless-stopped
   depends_on:
@@ -65,7 +62,7 @@ services:
   # ---------------- 애플리케이션 (profile: app) ----------------
   auth-service:
     <<: *svc
-    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: auth-service } }
+    build: { context: ., dockerfile: services/auth-service/Dockerfile }
     environment:
       <<: *svc-env
       JWT_PRIVATE_KEY_FILE: /run/secrets/homeiot/jwt-private.pem
@@ -75,25 +72,25 @@ services:
 
   device-service:
     <<: *svc
-    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: device-service } }
+    build: { context: ., dockerfile: services/device-service/Dockerfile }
     environment: *svc-env
     ports: ["3002:3002"]
 
   control-service:
     <<: *svc
-    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: control-service } }
+    build: { context: ., dockerfile: services/control-service/Dockerfile }
     environment: *svc-env
     ports: ["3003:3003"]
 
   telemetry-service:
     <<: *svc
-    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: telemetry-service } }
+    build: { context: ., dockerfile: services/telemetry-service/Dockerfile }
     environment: *svc-env
     ports: ["3004:3004"]
 
   simulator:
     <<: *svc
-    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: simulator } }
+    build: { context: ., dockerfile: services/simulator/Dockerfile }
     environment: *svc-env
     depends_on:
       mosquitto: { condition: service_started }

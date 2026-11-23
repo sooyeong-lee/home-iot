@@ -6,7 +6,8 @@ secrets
 deploy
 docs
 web
-*.md
+**/*.md
+**/test
 ci
 Jenkinsfile
 .github

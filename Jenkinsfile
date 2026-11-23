@@ -10,13 +10,13 @@
 //   github-token : Username = GitHub 아이디, Password = PAT (repo, write:packages)
 // =====================================================================
 def IMAGES = [
-  [name: 'auth-service',      context: '.',     file: 'services/Dockerfile', service: 'auth-service'],
-  [name: 'device-service',    context: '.',     file: 'services/Dockerfile', service: 'device-service'],
-  [name: 'control-service',   context: '.',     file: 'services/Dockerfile', service: 'control-service'],
-  [name: 'telemetry-service', context: '.',     file: 'services/Dockerfile', service: 'telemetry-service'],
-  [name: 'simulator',         context: '.',     file: 'services/Dockerfile', service: 'simulator'],
-  [name: 'web',               context: 'web',   file: 'web/Dockerfile',      service: ''],
-  [name: 'web-nginx',         context: 'nginx', file: 'nginx/Dockerfile',    service: ''],
+  [name: 'auth-service',      context: '.',     file: 'services/auth-service/Dockerfile'],
+  [name: 'device-service',    context: '.',     file: 'services/device-service/Dockerfile'],
+  [name: 'control-service',   context: '.',     file: 'services/control-service/Dockerfile'],
+  [name: 'telemetry-service', context: '.',     file: 'services/telemetry-service/Dockerfile'],
+  [name: 'simulator',         context: '.',     file: 'services/simulator/Dockerfile'],
+  [name: 'web',               context: 'web',   file: 'web/Dockerfile'],
+  [name: 'web-nginx',         context: 'nginx', file: 'nginx/Dockerfile'],
 ]
 
 pipeline {
@@ -68,10 +68,9 @@ pipeline {
         script {
           for (img in IMAGES) {
             def ref = "ghcr.io/${env.GHCR_OWNER}/home-iot/${img.name}"
-            def arg = img.service ? "--build-arg SERVICE=${img.service}" : ''
             stage("build ${img.name}") {
               sh """
-                docker build --pull ${arg} -f ${img.file} \
+                docker build --pull -f ${img.file} \
                   --label org.opencontainers.image.source=https://github.com/${env.REPO_PATH} \
                   --label org.opencontainers.image.revision=${env.GIT_COMMIT} \
                   -t ${ref}:${env.TAG} -t ${ref}:latest ${img.context}

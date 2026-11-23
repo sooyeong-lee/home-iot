@@ -11,11 +11,11 @@
  *   3) 기기가 같은 commandId 로 state 를 발행하면 completed 로 바꾸고 결과 응답
  *   4) COMMAND_TIMEOUT_MS 안에 응답이 없으면 timeout 저장 후 504
  */
-const crypto = require('node:crypto');
 const {
   createService, createPool, requireUser, connectMqtt, callService, express, env, envInt,
   Errors, ok, wrap, topics, ALL_TOPICS, parseTopic, sharedTopic, validateCommand,
 } = require('@homeiot/common');
+const { newId, validateElevatorCall } = require('./validate');
 
 const svc = createService('control-service');
 const { logger } = svc;
@@ -71,11 +71,6 @@ function waitForResult(commandId) {
   });
 }
 
-const newId = (prefix) => {
-  const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  return `${prefix}-${d}-${crypto.randomBytes(4).toString('hex')}`;
-};
-
 const r = express.Router();
 r.use(requireUser); // 사용자 식별: Gateway 가 넣어 준 x-user-id
 
@@ -126,8 +121,8 @@ r.post('/devices/:deviceId/commands', wrap(async (req, res) => {
 // 엘리베이터 호출
 r.post('/elevator/calls', wrap(async (req, res) => {
   const { deviceId, floor, direction } = req.body ?? {};
-  if (!Number.isInteger(floor) || floor < -10 || floor > 200 || floor === 0) throw Errors.invalid('floor 는 -10~200 사이 정수(0 제외)여야 합니다.');
-  if (direction !== undefined && direction !== null && !['up', 'down'].includes(direction)) throw Errors.invalid('direction 은 up | down 중 하나여야 합니다.');
+  const invalid = validateElevatorCall({ floor, direction });
+  if (invalid) throw Errors.invalid(invalid);
 
   let device;
   if (deviceId) {

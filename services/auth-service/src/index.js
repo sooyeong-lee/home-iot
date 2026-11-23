@@ -20,6 +20,7 @@ const {
   createService, createPool, requireUser, express, env, envInt, envSecret,
   Errors, ok, wrap, tx,
 } = require('@homeiot/common');
+const { validateSignup } = require('./validate');
 
 const svc = createService('auth-service');
 const { logger } = svc;
@@ -36,7 +37,6 @@ const KID = env('JWT_KID', 'homeiot-1');
 
 const jwk = { ...publicKey.export({ format: 'jwk' }), kid: KID, alg: 'RS256', use: 'sig' };
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 function signTokens(user) {
@@ -61,10 +61,7 @@ const r = express.Router();
 // US-01 회원가입
 r.post('/auth/signup', wrap(async (req, res) => {
   const { email, password, name } = req.body ?? {};
-  const details = [];
-  if (typeof email !== 'string' || !EMAIL_RE.test(email) || email.length > 255) details.push({ field: 'email', message: '이메일 형식이 올바르지 않습니다.' });
-  if (typeof password !== 'string' || password.length < 8 || password.length > 72) details.push({ field: 'password', message: '비밀번호는 8자 이상(72자 이하)이어야 합니다.' });
-  if (typeof name !== 'string' || !name.trim() || name.length > 50) details.push({ field: 'name', message: '이름을 입력하세요 (50자 이하).' });
+  const details = validateSignup({ email, password, name });
   if (details.length) throw Errors.invalid('입력값을 확인하세요.', details);
 
   const hash = await bcrypt.hash(password, 10);

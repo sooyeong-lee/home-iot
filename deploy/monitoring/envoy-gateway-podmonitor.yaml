@@ -1,0 +1,19 @@
+# Envoy Gateway 컨트롤러(컨트롤 플레인) 지표 수집 (가이드 8-9)
+#   kubectl apply -f deploy/monitoring/envoy-gateway-podmonitor.yaml
+# 프록시(데이터 플레인) 지표는 envoy-podmonitor.yaml.
+# gateway-helm 차트의 envoy-gateway 파드: 라벨 control-plane=envoy-gateway, 포트 metrics(19001) /metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: envoy-gateway-controller
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [envoy-gateway-system]
+  selector:
+    matchLabels:
+      control-plane: envoy-gateway
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

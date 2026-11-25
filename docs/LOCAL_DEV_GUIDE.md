@@ -639,7 +639,7 @@ git push origin main                                                    # → Ar
 모든 서비스가 `/metrics`(Prometheus), `/healthz`(liveness), `/readyz`(DB·MQTT 연결 확인)를 제공합니다.
 업무 지표: `homeiot_commands_total{type,command,result}`, `homeiot_command_roundtrip_seconds`, `homeiot_mqtt_messages_total`, `homeiot_devices_online`.
 파드에는 `prometheus.io/scrape` 어노테이션이 붙어 있습니다.
-관측 도구 설치 값은 `deploy/monitoring/` (kube-prometheus-stack · Loki · Alloy 값 파일, Envoy PodMonitor), Prometheus 수집 허용 NetworkPolicy 는 `deploy/k8s/base/networkpolicy-monitoring.yaml` 에 있습니다. 설치 절차는 Word 가이드 **8절**을 봅니다.
+관측 도구 설치 값은 `deploy/monitoring/` (kube-prometheus-stack · Loki · Alloy 값 파일, PodMonitor 3개: Envoy 프록시 · Envoy Gateway 컨트롤러 · mosquitto), Prometheus 수집 허용 NetworkPolicy 는 `deploy/k8s/base/networkpolicy-monitoring.yaml` 에 있습니다. 설치 절차는 Word 가이드 **8절**을 봅니다.
 
 ### 9-4. 설계 문서와 달라진 점 · 보완한 점
 

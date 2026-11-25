@@ -15,22 +15,22 @@ resources:
 images:
   - name: homeiot/auth-service
     newName: ghcr.io/sooyeong-lee/home-iot/auth-service
-    newTag: sha-9a1f837
+    newTag: sha-38d51a9
   - name: homeiot/device-service
     newName: ghcr.io/sooyeong-lee/home-iot/device-service
-    newTag: sha-9a1f837
+    newTag: sha-38d51a9
   - name: homeiot/control-service
     newName: ghcr.io/sooyeong-lee/home-iot/control-service
-    newTag: sha-9a1f837
+    newTag: sha-38d51a9
   - name: homeiot/telemetry-service
     newName: ghcr.io/sooyeong-lee/home-iot/telemetry-service
-    newTag: sha-9a1f837
+    newTag: sha-38d51a9
   - name: homeiot/simulator
     newName: ghcr.io/sooyeong-lee/home-iot/simulator
-    newTag: sha-9a1f837
+    newTag: sha-38d51a9
   - name: homeiot/web
     newName: ghcr.io/sooyeong-lee/home-iot/web
-    newTag: sha-9a1f837
+    newTag: sha-38d51a9
   - name: homeiot/web-nginx
     newName: ghcr.io/sooyeong-lee/home-iot/web-nginx
-    newTag: sha-9a1f837
+    newTag: sha-38d51a9

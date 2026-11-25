@@ -1,0 +1,21 @@
+# MQTT 브로커(mosquitto) 지표 수집 (가이드 8-10)
+#   kubectl apply -f deploy/monitoring/mosquitto-podmonitor.yaml
+# mosquitto 파드의 사이드카 mosquitto-exporter(:9234, deploy/k8s/base/mosquitto.yaml)만 수집한다.
+# homeiot-pods(어노테이션) 방식을 쓰지 않는 이유: 파드에 포트가 2개(1883, 9234)라
+# 어노테이션 규칙으로는 같은 주소가 컨테이너마다 한 번씩 2번 수집된다.
+# 9234 수집 허용은 deploy/k8s/base/networkpolicy-monitoring.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: mosquitto
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [homeiot]
+  selector:
+    matchLabels:
+      app: mosquitto
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

@@ -23,3 +23,4 @@ spec:
         - { protocol: TCP, port: 3003 }   # control-service
         - { protocol: TCP, port: 3004 }   # telemetry-service
         - { protocol: TCP, port: 3005 }   # simulator
+        - { protocol: TCP, port: 9234 }   # mosquitto-exporter (가이드 8-10)

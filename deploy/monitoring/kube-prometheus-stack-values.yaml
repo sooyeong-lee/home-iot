@@ -16,7 +16,7 @@ alertmanager:
 prometheus:
   prometheusSpec:
     retention: 7d
-    podMonitorSelectorNilUsesHelmValues: false   # 8-8 의 Envoy PodMonitor 도 수집
+    podMonitorSelectorNilUsesHelmValues: false   # deploy/monitoring/*-podmonitor.yaml (Envoy 8-8 · 8-9, mosquitto 8-10) 도 수집
     storageSpec:
       volumeClaimTemplate:
         spec:

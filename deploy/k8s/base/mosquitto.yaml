@@ -65,6 +65,22 @@ spec:
               mountPath: /mosquitto/config
             - name: data
               mountPath: /mosquitto/data
+        # 브로커 지표 (가이드 8-10): mosquitto 가 10초마다 발행하는 $SYS/# 를 구독해 :9234/metrics 로 제공
+        # 수집은 deploy/monitoring/mosquitto-podmonitor.yaml (port: metrics)
+        - name: mosquitto-exporter
+          image: sapcc/mosquitto-exporter:0.8.0
+          args: ["--endpoint", "tcp://127.0.0.1:1883", "--bind-address", "0.0.0.0:9234"]
+          env:
+            - name: MQTT_USER
+              valueFrom: { secretKeyRef: { name: homeiot-secrets, key: MQTT_USERNAME } }
+            - name: MQTT_PASS
+              valueFrom: { secretKeyRef: { name: homeiot-secrets, key: MQTT_PASSWORD } }
+          ports:
+            - name: metrics
+              containerPort: 9234
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
       volumes:
         - name: config
           configMap: { name: mosquitto-config }
